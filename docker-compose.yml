@@ -1,0 +1,144 @@
+version: "3.8"
+
+networks:
+  nnet:
+    driver: bridge
+
+services:
+  nats-1:
+    image: nats:2.11.8
+    container_name: nats-1
+    restart: unless-stopped
+    environment:
+      - SERVER_NAME=nats-1
+      - CLUSTER_NAME=im-cluster
+      - ADVERTISE_HOST=nats-1       # 对内路由名
+      - CLIENT_PORT=4222
+      - MONITOR_PORT=8222
+      - CLUSTER_PORT=6222
+      - ROUTES=nats://nats-2:6222,nats://nats-3:6222
+      - JS_STORE_DIR=/data
+    command: ["-c", "/etc/nats/nats.conf"]
+    ports:
+      - "4222:4222"   # 对外暴露一个入口；生产可上 LB/NLB/Keepalived
+      - "8222:8222"   # 监控端口（建议限 IP）
+    volumes:
+      - ./conf/nats-1.conf:/etc/nats/nats.conf:ro
+      - ./data/n1:/data
+      - ./certs:/etc/nats/certs:ro
+    ulimits:
+      nofile: 1048576
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8222/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks: [nnet]
+
+  nats-2:
+    image: nats:2.11.8
+    container_name: nats-2
+    restart: unless-stopped
+    environment:
+      - SERVER_NAME=nats-2
+      - CLUSTER_NAME=im-cluster
+      - ADVERTISE_HOST=nats-2
+      - CLIENT_PORT=4222
+      - MONITOR_PORT=8222
+      - CLUSTER_PORT=6222
+      - ROUTES=nats://nats-1:6222,nats://nats-3:6222
+      - JS_STORE_DIR=/data
+    command: ["-c", "/etc/nats/nats.conf"]
+    volumes:
+      - ./conf/nats-2.conf:/etc/nats/nats.conf:ro
+      - ./data/n2:/data
+      - ./certs:/etc/nats/certs:ro
+    ulimits:
+      nofile: 1048576
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8222/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks: [nnet]
+
+  nats-3:
+    image: nats:2.11.8
+    container_name: nats-3
+    restart: unless-stopped
+    environment:
+      - SERVER_NAME=nats-3
+      - CLUSTER_NAME=im-cluster
+      - ADVERTISE_HOST=nats-3
+      - CLIENT_PORT=4222
+      - MONITOR_PORT=8222
+      - CLUSTER_PORT=6222
+      - ROUTES=nats://nats-1:6222,nats://nats-2:6222
+      - JS_STORE_DIR=/data
+    command: ["-c", "/etc/nats/nats.conf"]
+    volumes:
+      - ./conf/nats-3.conf:/etc/nats/nats.conf:ro
+      - ./data/n3:/data
+      - ./certs:/etc/nats/certs:ro
+    ulimits:
+      nofile: 1048576
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8222/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks: [nnet]
+
+  # Prometheus Exporter（采集 JetStream/连接/路由等指标）
+  nats-exporter:
+    image: natsio/prometheus-nats-exporter:0.15.0
+    container_name: nats-exporter
+    restart: unless-stopped
+    command: [
+      "-varz",
+      "-subz",
+      "-connz",
+      "-routez",
+      "-jsz=all",
+      "http://nats-1:8222"
+    ]
+    volumes:
+      - ./conf/exporter.yml:/etc/exporter/exporter.yml:ro
+    ports:
+      - "7777:7777"
+    networks: [nnet]
+
+  # Prometheus 服务
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    restart: unless-stopped
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+    volumes:
+      - ./conf/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./data/prometheus:/prometheus
+    ports:
+      - "9090:9090"
+    networks: [nnet]
+
+  # Grafana 服务
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    restart: unless-stopped
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_INSTALL_PLUGINS=
+    volumes:
+      - ./data/grafana:/var/lib/grafana
+      - ./conf/grafana-datasources.yml:/etc/grafana/provisioning/datasources/prometheus.yml:ro
+      - ./conf/grafana-dashboards/dashboard-provider.yml:/etc/grafana/provisioning/dashboards/provider.yml:ro
+      - ./conf/grafana-dashboards/nats-dashboard.json:/var/lib/grafana/dashboards/nats.json:ro
+    ports:
+      - "3000:3000"
+    networks: [nnet]

@@ -1,0 +1,86 @@
+apiVersion: 1
+
+groups:
+  - name: NATS Alerts
+    folder: NATS
+    interval: 1m
+    rules:
+      - uid: nats-server-down
+        title: NATS Server Down
+        condition: A
+        data:
+          - refId: A
+            queryModel:
+              expr: up{job="nats"} == 0
+              refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+        noDataState: Alerting
+        execErrState: Alerting
+        for: 2m
+        annotations:
+          summary: "NATS server is down"
+          description: "NATS server has been down for more than 2 minutes"
+        labels:
+          severity: critical
+          
+      - uid: high-memory-usage
+        title: High Memory Usage
+        condition: A
+        data:
+          - refId: A
+            queryModel:
+              expr: gnatsd_varz_mem > 1073741824
+              refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+        noDataState: NoData
+        execErrState: Alerting
+        for: 5m
+        annotations:
+          summary: "High memory usage detected"
+          description: "NATS server memory usage is above 1GB"
+        labels:
+          severity: warning
+          
+      - uid: slow-consumers
+        title: Too Many Slow Consumers
+        condition: A
+        data:
+          - refId: A
+            queryModel:
+              expr: gnatsd_varz_slow_consumers > 10
+              refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+        noDataState: NoData
+        execErrState: Alerting
+        for: 5m
+        annotations:
+          summary: "Too many slow consumers"
+          description: "More than 10 slow consumers detected"
+        labels:
+          severity: warning
+          
+      - uid: no-cluster-routes
+        title: No Cluster Routes
+        condition: A
+        data:
+          - refId: A
+            queryModel:
+              expr: gnatsd_routez_num_routes == 0
+              refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+        noDataState: NoData
+        execErrState: Alerting
+        for: 2m
+        annotations:
+          summary: "No cluster routes"
+          description: "NATS server has no cluster routes established"
+        labels:
+          severity: critical

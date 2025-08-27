@@ -1,0 +1,21 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  # NATS Exporter metrics
+  - job_name: 'nats'
+    static_configs:
+      - targets: ['nats-exporter:7777']
+        labels:
+          cluster: 'im-cluster'
+  
+  # Direct NATS server metrics (optional, if servers expose Prometheus metrics)
+  - job_name: 'nats-servers'
+    static_configs:
+      - targets: 
+        - 'nats-1:8222'
+        - 'nats-2:8222'
+        - 'nats-3:8222'
+        labels:
+          cluster: 'im-cluster'
